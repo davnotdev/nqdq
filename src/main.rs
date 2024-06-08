@@ -9,7 +9,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +37,7 @@ pub struct Config {
     queue_full_cap: u64,
     queue_max_cap: u64,
     app_max: u64,
+    app_name_max_length: usize,
 }
 
 impl Default for Config {
@@ -48,10 +49,12 @@ impl Default for Config {
             queue_full_cap: 50,
             queue_max_cap: u64::MAX,
             app_max: u64::MAX,
+            app_name_max_length: 50,
         }
     }
 }
 
+const ERR_APP_NAME_LENGTH: &str = "APP_NAME_LENGTH";
 const NQ_ERR_APPS_FULL: &str = "APPS_FULL";
 const NQ_ERR_QUEUE_FULL: &str = "QUEUE_FULL";
 const DQ_ERR_APP_EXPIRE: &str = "APP_EXPIRE";
@@ -69,6 +72,7 @@ async fn main() {
         .route("/nq", get(get_nq))
         .route("/dq", get(get_dq))
         .with_state(Arc::clone(&data))
+        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
@@ -92,6 +96,10 @@ async fn get_nq(State(state): State<Arc<Mutex<Data>>>, Query(query): Query<NQPar
     let id_or_err = 'a: {
         let mut state = state.lock().unwrap();
         let config = state.config;
+
+        if query.app.chars().count() > config.app_name_max_length {
+            break 'a Err(ERR_APP_NAME_LENGTH);
+        }
 
         if state.registered_apps.len() as u64 >= config.app_max {
             break 'a Err(NQ_ERR_APPS_FULL);
@@ -122,6 +130,10 @@ async fn get_dq(State(state): State<Arc<Mutex<Data>>>, Query(query): Query<DQPar
     let err = 'a: {
         let mut state = state.lock().unwrap();
         let config = state.config;
+
+        if query.app.chars().count() > config.app_name_max_length {
+            break 'a Some(ERR_APP_NAME_LENGTH);
+        }
 
         let Some((queries, time_ping)) = state.registered_apps.get_mut(&query.app) else {
             break 'a Some(DQ_ERR_APP_EXPIRE);
