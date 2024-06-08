@@ -70,7 +70,7 @@ const DQ_ERR_ID_EXPIRE: &str = "ID_EXPIRE";
 
 #[tokio::main]
 async fn main() {
-    dotenv::dotenv().unwrap();
+    dotenv::dotenv().ok();
 
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -86,9 +86,13 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(format!(
+        "{}:{}",
+        env_or!("ADDR", "127.0.0.1".to_owned()),
+        env_or!("PORT", 8080)
+    ))
+    .await
+    .unwrap();
     println!("Listening on {}", listener.local_addr().unwrap());
     tokio::try_join!(
         tokio::spawn(async move {
