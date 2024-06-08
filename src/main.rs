@@ -29,6 +29,14 @@ pub struct Data {
     config: Config,
 }
 
+macro_rules! env_or {
+    ($NAME: expr, $DEFAULT: expr) => {
+        std::env::vars()
+            .find_map(|(k, v)| (k == $NAME && !v.is_empty()).then(|| v.parse().unwrap()))
+            .unwrap_or($DEFAULT)
+    };
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Config {
     garbage_cycle_time: Duration,
@@ -43,13 +51,13 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            garbage_cycle_time: Duration::from_secs(8),
-            queue_expire_time: Duration::from_secs(4),
-            app_expire_time: Duration::from_secs(1800),
-            queue_full_cap: 50,
-            queue_max_cap: u64::MAX,
-            app_max: u64::MAX,
-            app_name_max_length: 50,
+            garbage_cycle_time: Duration::from_secs(env_or!("GARBAGE_CYCLE_TIME", 8)),
+            queue_expire_time: Duration::from_secs(env_or!("QUEUE_EXPIRE_TIME", 4)),
+            app_expire_time: Duration::from_secs(env_or!("APP_EXPIRE_TIME", 1800)),
+            queue_full_cap: env_or!("QUEUE_FULL_CAP", 50),
+            queue_max_cap: env_or!("QUEUE_MAX_CAP", u64::MAX),
+            app_max: env_or!("APP_MAX", u64::MAX),
+            app_name_max_length: env_or!("APP_NAME_MAX_LENGTH", 50),
         }
     }
 }
@@ -62,11 +70,14 @@ const DQ_ERR_ID_EXPIRE: &str = "ID_EXPIRE";
 
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().unwrap();
+
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
     let data = Arc::new(Mutex::new(Data::default()));
+    println!("{:#?}", { data.lock().unwrap().config });
 
     let app = Router::new()
         .route("/nq", get(get_nq))
