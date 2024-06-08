@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tower_http::trace::TraceLayer;
 use uuid::Uuid;
 
 #[derive(Debug, Deserialize)]
@@ -58,12 +59,17 @@ const DQ_ERR_ID_EXPIRE: &str = "ID_EXPIRE";
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+
     let data = Arc::new(Mutex::new(Data::default()));
 
     let app = Router::new()
         .route("/nq", get(get_nq))
         .route("/dq", get(get_dq))
-        .with_state(Arc::clone(&data));
+        .with_state(Arc::clone(&data))
+        .layer(TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
